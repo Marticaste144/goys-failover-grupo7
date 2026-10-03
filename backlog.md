@@ -21,31 +21,31 @@
 **Vencimiento: viernes 2/10**
 
 ### IPAM / direccionamiento
-- [ ] [R1/R3/R4] Diseñar el direccionamiento de todos los enlaces
-- [ ] [R4] Definir las redes LAN USERS y SERVERS
-- [ ] [R4] Definir los gateways virtuales VRRP
-- [ ] [R3] Definir los router-ids
-- [ ] [R5] Verificar que no existan subredes solapadas
+- [x] [R1/R3/R4] Diseñar el direccionamiento de todos los enlaces
+- [x] [R4] Definir las redes LAN USERS y SERVERS
+- [x] [R4] Definir los gateways virtuales VRRP
+- [x] [R3] Definir los router-ids
+- [x] [R5] Verificar que no existan subredes solapadas
 
 ### Corrección del diagrama
-- [ ] [R1] Identificar los defectos del diseño original
-- [ ] [R3/R4] Documentar las correcciones aplicadas
-- [ ] [R5] Justificar al menos tres correcciones
+- [x] [R1] Identificar los defectos del diseño original
+- [x] [R3/R4] Documentar las correcciones aplicadas
+- [x] [R5] Justificar al menos tres correcciones
 
 ### Política de seguridad
-- [ ] [R1] Definir usuarios y privilegios
-- [ ] [R2] Definir los servicios que se deshabilitarán
-- [ ] [R1/R3/R4] Definir autenticación para BGP, OSPF y VRRP
+- [x] [R1] Definir usuarios y privilegios
+- [x] [R2] Definir los servicios que se deshabilitarán
+- [x] [R1/R3/R4] Definir autenticación para BGP, OSPF y VRRP
 
 ### Política de operación
-- [ ] [R5] Definir el formato del change log
-- [ ] [R5] Definir la política de backups
+- [x] [R5] Definir el formato del change log
+- [x] [R5] Definir la política de backups
 
 ### Repositorio Git
 - [x] Crear el repositorio del Grupo 7
 - [x] Crear README e identificar integrantes y roles
-- [ ] Crear la estructura de carpetas requerida
-- [ ] Completar la documentación correspondiente a F0
+- [x] Crear la estructura de carpetas requerida
+- [x] Completar la documentación correspondiente a F0
 
 ---
 
