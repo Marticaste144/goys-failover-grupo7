@@ -1,4 +1,4 @@
-# 2026-10-08 18:38:49 by RouterOS 7.21.5
+# 2026-10-08 19:07:12 by RouterOS 7.21.5
 # system id = ufaZEKZCyUD
 #
 /interface bridge
@@ -14,8 +14,6 @@ add address=10.0.0.34/30 interface=ether2 network=10.0.0.32
 add address=192.168.10.3/24 interface=ether3 network=192.168.10.0
 add address=192.168.20.3/24 interface=ether4 network=192.168.20.0
 add address=7.7.7.7 interface=loopback network=7.7.7.7
-/ip dhcp-client
-add interface=ether1
 /ip service
 set ftp disabled=yes
 set telnet disabled=yes
