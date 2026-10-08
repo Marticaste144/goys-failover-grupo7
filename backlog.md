@@ -4,9 +4,7 @@
 **Integrantes:** Martina Castellani, Tomás Terruli, Pilar Giannelli  
 **Vencimiento final:** viernes 23/10/2026
 
-> El Grupo 7 está conformado por 3 integrantes. Debido a que la consigna
-> define 5 roles, las responsabilidades de R1 a R5 se distribuyen entre
-> los integrantes del grupo.
+> El Grupo 7 está conformado por 3 integrantes. Debido a que la consigna define 5 roles, las responsabilidades de R1 a R5 se distribuyen entre los integrantes del grupo.
 
 ## Leyenda de estado
 
@@ -53,28 +51,28 @@
 **Vencimiento: viernes 9/10**
 
 ### Despliegue
-- [ ] Levantar 7 routers CHR
-- [ ] Incorporar 2 switches
-- [ ] Incorporar 2 hosts
-- [ ] Cablear los nodos según el diseño aprobado
+- [x] Levantar 7 routers CHR
+- [x] Incorporar 2 switches
+- [x] Incorporar 2 hosts
+- [x] Cablear los nodos según el diseño aprobado
 
 ### IPs de enlace + loopbacks
-- [ ] Configurar las IPs definidas en F0
-- [ ] Configurar loopbacks
-- [ ] Verificar conectividad entre vecinos directos
+- [x] Configurar las IPs definidas en F0
+- [x] Configurar loopbacks
+- [x] Verificar conectividad entre vecinos directos
 
 ### Snapshot BASE
-- [ ] Crear snapshot BASE
-- [ ] Documentar el snapshot
+- [x] Crear snapshot BASE
+- [x] Documentar el snapshot
 
 ### Hardening
-- [ ] Configurar contraseña de administrador
-- [ ] Crear usuario de monitoreo
-- [ ] Deshabilitar servicios innecesarios en los 7 routers
+- [x] Configurar contraseña de administrador
+- [x] Crear usuario de monitoreo
+- [x] Deshabilitar servicios innecesarios en los 7 routers
 
 ### Backup inicial
-- [ ] Realizar `/export` de cada router
-- [ ] Guardar los exports en el repositorio
+- [x] Realizar `/export` de cada router
+- [x] Guardar los exports en el repositorio
 
 ---
 
