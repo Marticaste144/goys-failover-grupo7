@@ -165,3 +165,18 @@ del repositorio.
 
 También se realizarán backups de RouterOS cuando corresponda y se documentará
 posteriormente una prueba de restauración.
+
+
+## F1 — Topología, configuración inicial y seguridad
+
+Se implementó en GNS3 la topología del laboratorio Failover Routing, compuesta por siete routers MikroTik CHR, dos switches Ethernet y dos hosts VPCS.
+
+Se configuraron las direcciones IP de los enlaces punto a punto, las redes USERS y SERVERS y las interfaces loopback de los routers.
+
+Se establecieron contraseñas de administración, se creó un usuario de monitoreo con permisos de lectura y se deshabilitaron los servicios FTP, Telnet, WWW, API y API-SSL.
+
+Se verificó mediante pruebas de ping la conectividad entre routers vecinos y entre los hosts y sus routers de distribución, obteniendo respuestas satisfactorias.
+
+Se creó el snapshot BASE-F1 en GNS3 y se almacenaron siete exports de configuración RouterOS en el directorio `backups/` del repositorio.
+
+**Resultado:** configuración inicial y pruebas de conectividad de F1 completadas.
