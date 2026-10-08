@@ -1,5 +1,4 @@
-
-# 2026-10-08 18:38:45 by RouterOS 7.21.5
+# 2026-10-08 19:07:07 by RouterOS 7.21.5
 # system id = ATuJiFna/jE
 #
 /interface bridge
@@ -15,8 +14,6 @@ add address=10.0.0.18/30 interface=ether2 network=10.0.0.16
 add address=10.0.0.25/30 interface=ether3 network=10.0.0.24
 add address=10.0.0.33/30 interface=ether4 network=10.0.0.32
 add address=5.5.5.5 interface=loopback network=5.5.5.5
-/ip dhcp-client
-add interface=ether1
 /ip service
 set ftp disabled=yes
 set telnet disabled=yes
