@@ -1,0 +1,31 @@
+# 2026-10-17 01:37:50 by RouterOS 7.21.5
+# system id = BmmYM4q7BWA
+#
+/interface bridge
+add name=loopback
+/interface ethernet
+set [ find default-name=ether1 ] disable-running-check=no
+set [ find default-name=ether2 ] disable-running-check=no
+set [ find default-name=ether3 ] disable-running-check=no
+set [ find default-name=ether4 ] disable-running-check=no
+/routing ospf instance
+add name=ospf-1 router-id=5.5.5.5
+/routing ospf area
+add instance=ospf-1 name=backbone
+/ip address
+add address=10.0.0.14/30 interface=ether1 network=10.0.0.12
+add address=10.0.0.18/30 interface=ether2 network=10.0.0.16
+add address=10.0.0.25/30 interface=ether3 network=10.0.0.24
+add address=10.0.0.33/30 interface=ether4 network=10.0.0.32
+add address=5.5.5.5 interface=loopback network=5.5.5.5
+/ip service
+set ftp disabled=yes
+set telnet disabled=yes
+set www disabled=yes
+set api disabled=yes
+set api-ssl disabled=yes
+/routing ospf interface-template
+add area=backbone auth=md5 auth-id=1 interfaces=ether1,ether2,ether3,ether4 type=ptp
+add area=backbone interfaces=loopback passive
+/system identity
+set name=CORE-2
