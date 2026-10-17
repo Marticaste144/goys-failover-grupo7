@@ -275,3 +275,68 @@ Una vez verificado el restore se guardó el snapshot `BASE-F1-RESTAURADO` en GNS
 - Al pegar un bloque dos veces, RouterOS responde `failure: already have ...` y no modifica la configuración. El estado final se valida siempre con los comandos `print`.
 
 **Resultado:** F1 restaurada y verificada en los siete routers y en los dos hosts, con evidencia en `capturas/f1-correccion/`.
+
+
+
+# 3. F2 — OSPF y VRRP
+
+## 3.1 Qué hicimos con OSPF
+
+Configuramos OSPF en un solo área (la 0, backbone) en los cinco routers de adentro: EDGE, los dos CORE y las dos distribuciones. Los ISP quedaron afuera a propósito: son otros sistemas autónomos y con ellos hablamos BGP en F3.
+
+| Router | Router-ID | Interfaces donde forma vecinos | Interfaces pasivas |
+|---|---|---|---|
+| EDGE | 3.3.3.3 | ether3 (CORE-1), ether4 (CORE-2) | loopback |
+| CORE-1 | 4.4.4.4 | ether1 (EDGE), ether2 (CORE-2), ether3 (DIST-1), ether4 (DIST-2) | loopback |
+| CORE-2 | 5.5.5.5 | ether1 (EDGE), ether2 (CORE-1), ether3 (DIST-1), ether4 (DIST-2) | loopback |
+| DIST-1 | 6.6.6.6 | ether1 (CORE-1), ether2 (CORE-2) | loopback, ether3 (USERS), ether4 (SERVERS) |
+| DIST-2 | 7.7.7.7 | ether1 (CORE-1), ether2 (CORE-2) | loopback, ether3 (USERS), ether4 (SERVERS) |
+
+Algunas decisiones que tomamos:
+
+- Pusimos los enlaces /30 como punto a punto (`type=ptp`). Como cada enlace une solo dos routers, no tiene sentido elegir DR/BDR, y la adyacencia sube más rápido.
+- Usamos autenticación MD5 con la misma clave en los cinco routers, como habíamos definido en la política de seguridad (1.3). La clave no está en el repo: el `/export` la oculta.
+- Las LAN y las loopbacks van como pasivas. Así OSPF anuncia esas redes, pero no manda paquetes hacia los hosts.
+- El enlace entre CORE-1 y CORE-2, que agregamos al corregir el diagrama en F0, también forma vecindad. Si se cae un camino, el núcleo tiene otro.
+
+## 3.2 Qué hicimos con VRRP
+
+VRRP lo pusimos en la distribución (corrección 4 de F0) y repartimos la carga: cada distribución es la principal de una LAN y la de respaldo de la otra.
+
+| Grupo | Interfaz | Gateway virtual | DIST-1 | DIST-2 | MAC virtual |
+|---|---|---|---|---|---|
+| vrid 10 — USERS | ether3 | 192.168.10.1 | Master (prioridad 150) | Backup (100) | 00:00:5E:00:01:0A |
+| vrid 20 — SERVERS | ether4 | 192.168.20.1 | Backup (100) | Master (prioridad 150) | 00:00:5E:00:01:14 |
+
+Usamos VRRP versión 2 porque en RouterOS 7 es la única que permite autenticación (en la versión 3 está deprecada). Al backup le dejamos la prioridad por defecto, 100.
+
+## 3.3 Cómo lo verificamos
+
+| # | Qué probamos | Qué esperábamos | Qué obtuvimos | Evidencia |
+|---|---|---|---|---|
+| P1 | Vecinos OSPF | 7 adyacencias en Full | Bien: los dos CORE con 4 vecinos Full cada uno y EDGE, DIST-1 y DIST-2 con 2 | `capturas/f2/p1-ospf-vecinos-CORE1.png`, `p1-ospf-vecinos-CORE2.png`, `config-ospf-EDGE.png`, `config-ospf-DIST1.png`, `config-ospf-DIST2.png` |
+| P2 | Autenticación OSPF | `auth=md5` en los templates | Bien | `capturas/f2/config-ospf-*.png` |
+| P2b | Rutas que aprendió EDGE | Las LAN, las loopbacks y los /30 de adentro | Bien, y las LAN aparecen por los dos CORE a la vez (ECMP) | `capturas/f2/p2-ospf-rutas-EDGE.png` |
+| P3 | Estado de VRRP | DIST-1 master en vrrp10 y backup en vrrp20; DIST-2 al revés | Bien | `capturas/f2/p3-vrrp-DIST1.png`, `p3-vrrp-DIST2.png`, `config-vrrp-DIST1.png`, `config-vrrp-DIST2.png` |
+| P4 | Autenticación VRRP | Versión 2 con autenticación simple | Bien; también se ve en `configs/DIST-1.rsc` y `DIST-2.rsc` | `capturas/f2/config-vrrp-DIST*.png` |
+| P5 | Gateway virtual desde los hosts | Que respondan al .1 con la MAC virtual | Bien: PC-USER ve 00:00:5e:00:01:0a y SRV ve 00:00:5e:00:01:14 | `capturas/f2/p5-gateway-PC-USER.png`, `p5-gateway-SRV.png` |
+| P6 | Tráfico entre LAN | Que PC-USER llegue a SRV | Bien: el trace pasa primero por 192.168.10.2, que es DIST-1, el master de USERS | `capturas/f2/p6-inter-LAN.png` |
+
+## 3.4 Configuración y backup
+
+Exportamos la configuración de cada router y la subimos a `configs/` (CORE-1, CORE-2, DIST-1, DIST-2 y EDGE). Antes de empezar F3 sacamos el snapshot `BASE-F2` en GNS3, y los exports de los siete routers al terminar F2 están en `backups/post-F2/`.
+
+## 3.5 Qué funcionó y qué no
+
+**Lo que funcionó:**
+
+- Las siete adyacencias subieron a Full. Además, cada CORE instaló dos caminos de igual costo hacia cada LAN, que es justamente la redundancia que buscábamos con el diseño.
+- VRRP eligió master y backup según las prioridades, y los hosts usan la MAC virtual como gateway.
+
+**Lo que no funcionó y cómo lo resolvimos:**
+
+- En EDGE y en DIST-1 cargamos el template de OSPF con las cuatro interfaces (`ether1,ether2,ether3,ether4`), porque copiamos la línea de los CORE sin adaptarla. En EDGE eso mandaba OSPF hacia los ISP y en DIST-1 hacia las LAN. Lo detectamos con `interface-template print` y lo corregimos con `/routing ospf interface-template set 0 interfaces=...`, sin que se cayeran los vecinos. Aprendimos a revisar cada bloque antes de pegarlo.
+- RouterOS oculta en pantalla las líneas que llevan claves, así que si una de esas líneas falla no se nota. Por eso, después de cada bloque, verificamos con `print`.
+- Una vez el pegado se cortó y la clave de VRRP quedó visible en la consola. No usamos esa pantalla como evidencia.
+
+**Resultado:** OSPF y VRRP funcionando con autenticación, y el gateway redundante repartiendo la carga entre las dos distribuciones.
