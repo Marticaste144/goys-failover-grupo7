@@ -148,6 +148,17 @@ Se utilizará el siguiente formato:
 | 16/10/2026 | Tomás Terruli (R2) | Evidencia del restore y hardening de ISP-1 e ISP-2 (`97a88ea`) | Corrección F1: restore verificado | `git revert 97a88ea` |
 | 16/10/2026 | Pilar Giannelli (R3/R4) | Evidencia del restore de CORE-1, CORE-2, DIST-1 y DIST-2 (`42d78a8`) | Corrección F1: restore verificado | `git revert 42d78a8` |
 | 16/10/2026 | Tomás Terruli (R2) | Change log completado con el historial real de commits | Corrección F1: change log coherente con los commits | `git revert` de este commit |
+| 16/10/2026 | Pilar Giannelli (R3) | OSPF área 0 con MD5 en CORE-1 y CORE-2, incluido el enlace entre ellos (`766d4fc`) | F2: ruteo interno | `/routing ospf instance remove ospf-1` |
+| 16/10/2026 | Pilar Giannelli (R4) | OSPF con MD5 y VRRP versión 2 con autenticación en DIST-1 y DIST-2; DIST-1 master de USERS y DIST-2 master de SERVERS (`4b68245`) | F2: gateway redundante repartiendo la carga | `/interface vrrp remove vrrp10,vrrp20` y sacar las IP virtuales |
+| 16/10/2026 | Martina Castellani (R1) | OSPF con MD5 en EDGE, solo hacia el core (ether3 y ether4) (`a609e3d`) | F2: sumar el borde al ruteo interno | `/routing ospf instance remove ospf-1` |
+| 16/10/2026 | Grupo 7 | Corregimos el template OSPF de EDGE y DIST-1, que habíamos cargado con ether1 a ether4 | No mandar OSPF hacia los ISP ni hacia las LAN | `/routing ospf interface-template set 0 interfaces=...` |
+| 16/10/2026 | Martina Castellani (R1/R5) y Pilar Giannelli (R3/R4) | Capturas de F2 (`4ecbc43`, `d38b004`) | Evidencia de F2 | `git revert` de esos commits |
+| 16/10/2026 | Tomás Terruli (R2) | eBGP con TCP-MD5 y ruta por defecto en ISP-1 (AS 65001) e ISP-2 (AS 65002) (`7de021b`) | F3: proveedores | `/routing bgp connection remove a-EDGE` |
+| 16/10/2026 | Martina Castellani (R1) | eBGP hacia los dos ISP, filtro `ospf-a-bgp` y ruta por defecto hacia adentro en EDGE (`a154842`) | F3: salida por dos proveedores | `/routing bgp connection remove a-ISP1,a-ISP2` |
+| 16/10/2026 | Tomás Terruli (R2) | Firewall de entrada y de tránsito en EDGE; administración solo desde 192.168.10.0/24 (`9d76e61`) | F3: proteger el borde | `/ip firewall filter remove [find comment~"F3"]` |
+| 17/10/2026 | Martina Castellani y Tomás Terruli | Capturas de F3 (`3994bfa`, `d8840fd`) y corrección del nombre de una captura (`2544d04`) | Evidencia de F3 | `git revert` de esos commits |
+| 17/10/2026 | Pilar Giannelli y Tomás Terruli | Memoria de F2 (OSPF y VRRP) y de F3 (BGP y firewall) | Documentar las fases | `git revert` de esos commits |
+
 
 El historial del change log deberá ser coherente con los commits realizados
 en el repositorio.
@@ -340,3 +351,74 @@ Exportamos la configuración de cada router y la subimos a `configs/` (CORE-1, C
 - Una vez el pegado se cortó y la clave de VRRP quedó visible en la consola. No usamos esa pantalla como evidencia.
 
 **Resultado:** OSPF y VRRP funcionando con autenticación, y el gateway redundante repartiendo la carga entre las dos distribuciones.
+
+
+
+# 4. F3 — BGP y firewall
+
+## 4.1 Qué hicimos con BGP
+
+Armamos eBGP entre EDGE y los dos proveedores. Cada router tiene su propio sistema autónomo:
+
+| Router | AS | Instancia BGP | Vecino | Qué anuncia |
+|---|---|---|---|---|
+| ISP-1 | 65001 | `bgp-isp1` (router-id 1.1.1.1) | EDGE (10.0.0.2) | Su loopback 1.1.1.1 y una ruta por defecto |
+| ISP-2 | 65002 | `bgp-isp2` (router-id 2.2.2.2) | EDGE (10.0.0.6) | Su loopback 2.2.2.2 y una ruta por defecto |
+| EDGE | 65000 | `bgp-edge` (router-id 3.3.3.3) | ISP-1 (10.0.0.1) e ISP-2 (10.0.0.5) | Las dos LAN: 192.168.10.0/24 y 192.168.20.0/24 |
+
+Cómo lo resolvimos:
+
+- Las sesiones usan TCP-MD5, con una clave distinta para cada proveedor. Las claves no están en el repo: el `/export` las oculta.
+- En los ISP, la loopback hace de "Internet". La anunciamos con una lista (`anuncio-isp`) y además cada ISP le manda a EDGE una ruta por defecto (`default-originate`).
+- EDGE toma las rutas de OSPF y las pasa a BGP, pero con un filtro (`ospf-a-bgp`) que deja salir solo las dos LAN. No queríamos que los proveedores vieran nuestros enlaces internos ni las loopbacks.
+- Para que los hosts puedan salir, EDGE reparte la ruta por defecto hacia adentro por OSPF (`originate-default=if-installed`). Lo hace solo mientras tenga una ruta por defecto aprendida de algún ISP; si se caen los dos, deja de anunciarla.
+
+## 4.2 Qué hicimos con el firewall de EDGE
+
+| # | Cadena | Acción | Qué deja pasar o bloquea | Para qué |
+|---|---|---|---|---|
+| 0 | input | accept | Conexiones establecidas o relacionadas | Las respuestas |
+| 1 | input | drop | Paquetes inválidos | Limpiar basura |
+| 2 | input | accept | ICMP | Poder hacer ping para diagnosticar |
+| 3 | input | accept | BGP (TCP 179) desde 10.0.0.1 | Sesión con ISP-1 |
+| 4 | input | accept | BGP (TCP 179) desde 10.0.0.5 | Sesión con ISP-2 |
+| 5 | input | accept | OSPF desde ether3 y ether4 (lista INTERNAS) | OSPF solo hacia el core |
+| 6 | input | accept | SSH y WinBox desde 192.168.10.0/24 (lista GESTION) | Administrar EDGE solo desde la red de gestión |
+| 7 | input | drop | Todo lo demás | Que nadie más llegue al router |
+| 8 | forward | accept | Conexiones establecidas o relacionadas | Que vuelvan las respuestas al tráfico que sale |
+| 9 | forward | drop | Paquetes inválidos | Limpiar basura |
+| 10 | forward | drop | Conexiones nuevas desde ether1 y ether2 (lista WAN) | Que desde los ISP no se pueda iniciar nada hacia adentro |
+
+Como red de gestión elegimos USERS (192.168.10.0/24). La política 1.3 decía que la administración tenía que quedar limitada a las redes necesarias, y USERS es donde está la PC desde la que se administra.
+
+## 4.3 Cómo lo verificamos
+
+| # | Qué probamos | Qué esperábamos | Qué obtuvimos | Evidencia |
+|---|---|---|---|---|
+| P7 | Sesiones BGP | Dos sesiones establecidas en EDGE | Bien: a-ISP1-1 (AS 65001) y a-ISP2-1 (AS 65002) | `capturas/f3/p7-bgp-EDGE.png`, `config-bgp-EDGE.png`, `config-bgp-ISP1.png`, `config-bgp-ISP1-b.png`, `config-bgp-ISP2.png` |
+| P8 | Rutas BGP | Los ISP ven solo las dos LAN; EDGE recibe la ruta por defecto y las loopbacks | Bien. De las dos rutas por defecto queda activa la de ISP-1 y la de ISP-2 queda de reserva | `capturas/f3/p8-rutas-ISP1.png`, `p8-rutas-ISP2.png`, `p8-rutas-bgp-EDGE.png`, `config-ospf-default-EDGE.png` |
+| P9 | Salida a Internet | Que los hosts lleguen a 1.1.1.1 y a 2.2.2.2 | Bien. PC-USER sale por DIST-1 → CORE-1 → EDGE → ISP-1. SRV sale por DIST-2 → CORE-2 → EDGE → ISP-2 | `capturas/f3/p9-internet-PC-USER.png`, `p9-internet-SRV.png` |
+| P10 | Que el firewall no rompa nada | OSPF en Full, BGP establecido y los hosts saliendo | Bien | `capturas/f3/p10-firewall-sesiones-F3-EDGE.png`, `p10-firewall-F3-PC-USER.png`, `p10-firewall-stats-F3-EDGE.png` |
+| P11 | Gestión protegida | Que un SSH desde ISP-1 hacia EDGE no conecte | Bien: no conectó, y el contador de la regla 7 pasó de 72 a 114 paquetes | `capturas/f3/p11-gestion-bloqueada-F3-ISP1.png` |
+
+La configuración del firewall está en `capturas/f3/EDGE-F3-firewall.png` (las listas de interfaces y de gestión), `config-firewall-EDGE-F3-2.png` (reglas de input) y `config-firewall-EDGE-F3-3.png` (reglas de forward).
+
+## 4.4 Configuración y backup
+
+Las configuraciones están en `configs/ISP-1.rsc`, `configs/ISP-2.rsc` y `configs/EDGE.rsc`. EDGE quedó con su versión final (OSPF, BGP y firewall); las versiones anteriores se pueden ver en el historial de commits. Al terminar sacamos el snapshot `BASE-F3` en GNS3, y los exports de los siete routers están en `backups/post-F3/`.
+
+## 4.5 Qué funcionó y qué no
+
+**Lo que funcionó:**
+
+- Las dos sesiones BGP levantaron con TCP-MD5. Si la clave no coincide, la sesión directamente no levanta.
+- El filtro hace que hacia afuera salgan solo las LAN, y la ruta por defecto llega a toda la red por OSPF.
+- El firewall no cortó OSPF, BGP ni la salida de los hosts, y bloquea la administración desde los ISP.
+
+**Lo que no funcionó y cómo lo resolvimos:**
+
+- En RouterOS 7.21 no se puede poner el `router-id` dentro de la conexión BGP: nos dio error. Hubo que crear primero una instancia BGP con el AS y el router-id (`/routing bgp instance add ...`) y después asociar la conexión a esa instancia.
+- En ISP-1 la instancia nos quedó duplicada. Al borrar la copia, sin darnos cuenta borramos la que usaba la conexión, y la sesión con EDGE no levantaba. Revisando con `connection print` vimos que apuntaba a una instancia que ya no existía (`instance=*2`). Lo arreglamos con `set a-EDGE instance=bgp-isp1`.
+- Las reglas de BGP del firewall (la 3 y la 4) quedaron con 0 paquetes. Tiene sentido: las sesiones ya estaban levantadas antes de poner el firewall, así que su tráfico entra por la regla de respuestas. Esas reglas se van a usar cuando un ISP tenga que volver a abrir la sesión, y lo vamos a probar en los drills de F4.
+
+**Resultado:** salida a Internet por los dos proveedores con BGP autenticado, y el borde protegido por el firewall.
