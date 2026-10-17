@@ -75,26 +75,35 @@
 - [x] Guardar los exports en el repositorio
 
 ---
-
+### Corrección F1 (devolución del profesor, 16/10)
+- [x] [R1/R5] Organizar y numerar las capturas de F1 en capturas/f1/ (34f6337, 356ea45)
+- [x] [R3/R4] Probar el restore de F1 en los 7 routers desde backups/*-F1.rsc
+- [x] [R1/R5] Evidenciar el restore de EDGE y de los hosts (a7d48c9)
+- [x] [R2] Evidenciar el restore y hardening de ISP-1 e ISP-2 (97a88ea)
+- [x] [R3/R4] Evidenciar el restore de CORE-1, CORE-2, DIST-1 y DIST-2 (42d78a8)
+- [x] [R2] Completar el change log con los commits reales (a393e2e)
+- [x] [R3/R4] Estructurar la memoria F1 con tablas de verificación y restore (87c4c26)
+- [x] Crear snapshot BASE-F1-RESTAURADO en GNS3
+      
 ## Epic F2 — VRRP + OSPF
 **Vencimiento: viernes 16/10**
 
 ### VRRP
-- [ ] [R4] Configurar VRRP vrid 10 en DIST-1 como master
-- [ ] [R4] Configurar VRRP vrid 20 en DIST-2 como master
-- [ ] [R4] Configurar autenticación de VRRP
-- [ ] [R5] Verificar funcionamiento master/backup
+- [x] [R4] Configurar VRRP vrid 10 en DIST-1 como master
+- [x] [R4] Configurar VRRP vrid 20 en DIST-2 como master
+- [x] [R4] Configurar autenticación de VRRP
+- [x] [R5] Verificar funcionamiento master/backup
 
 ### OSPF área 0
-- [ ] [R3] Configurar OSPF en CORE-1 y CORE-2
-- [ ] Configurar OSPF entre EDGE, CORE y DIST
-- [ ] [R3] Incluir el enlace CORE-1 ↔ CORE-2
-- [ ] Configurar autenticación OSPF
-- [ ] Verificar adyacencias FULL
+- [x] [R3] Configurar OSPF en CORE-1 y CORE-2
+- [x] Configurar OSPF entre EDGE, CORE y DIST
+- [x] [R3] Incluir el enlace CORE-1 ↔ CORE-2
+- [x] Configurar autenticación OSPF
+- [x] Verificar adyacencias FULL
 
 ### Verificación L3
-- [ ] Verificar ping intra-LAN
-- [ ] Verificar respuesta de los gateways virtuales
+- [x] Verificar ping intra-LAN
+- [x] Verificar respuesta de los gateways virtuales
 
 ---
 
@@ -102,22 +111,28 @@
 **Vencimiento: viernes 16/10**
 
 ### eBGP multi-homing
-- [ ] [R1/R2] Configurar sesión EDGE ↔ ISP-1
-- [ ] [R1/R2] Configurar sesión EDGE ↔ ISP-2
-- [ ] Configurar autenticación BGP
-- [ ] Verificar ambas sesiones established
+- [x] [R1/R2] Configurar sesión EDGE ↔ ISP-1
+- [x] [R1/R2] Configurar sesión EDGE ↔ ISP-2
+- [x] Configurar autenticación BGP
+- [x] Verificar ambas sesiones established
 
 ### Redistribución
-- [ ] Configurar redistribución OSPF → BGP
-- [ ] Verificar anuncio de las LAN hacia los ISP
+- [x] Configurar redistribución OSPF → BGP
+- [x] Verificar anuncio de las LAN hacia los ISP
 
 ### Salida a Internet
-- [ ] Verificar conectividad desde host hasta loopback de ISP
+- [x] Verificar conectividad desde host hasta loopback de ISP
 
 ### Firewall edge
-- [ ] Configurar filtro de entrada
-- [ ] Proteger el plano de gestión
-- [ ] Verificar funcionamiento de las reglas
+- [x] Configurar filtro de entrada
+- [x] Proteger el plano de gestión
+- [x] Verificar funcionamiento de las reglas
+
+### Backups y evidencias F2/F3
+- [x] Snapshots `BASE-F2` y `BASE-F3` en GNS3
+- [x] Exports en `configs/` y backups en `backups/post-F2/` y `backups/post-F3/`
+- [x] Capturas en `capturas/f2/` y `capturas/f3/`
+- [x] Memoria de F2 y F3 y change log actualizados
 
 ---
 
