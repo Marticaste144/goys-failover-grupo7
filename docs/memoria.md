@@ -180,16 +180,98 @@ También se realizarán backups de RouterOS cuando corresponda y se documentará
 posteriormente una prueba de restauración.
 
 
-## F1 — Topología, configuración inicial y seguridad
+# 2. F1 — Topología, hardening y backup
 
-Se implementó en GNS3 la topología del laboratorio Failover Routing, compuesta por siete routers MikroTik CHR, dos switches Ethernet y dos hosts VPCS.
+## 2.1 Implementación
 
-Se configuraron las direcciones IP de los enlaces punto a punto, las redes USERS y SERVERS y las interfaces loopback de los routers.
+Se implementó en GNS3 2.2.61 la topología del laboratorio con siete routers MikroTik CHR (RouterOS 7.21.5), dos switches Ethernet (SW-USERS y SW-SERVERS) y dos hosts VPCS (PC-USER y SRV), cableados según el plan de direccionamiento de la sección 1.2.
 
-Se establecieron contraseñas de administración, se creó un usuario de monitoreo con permisos de lectura y se deshabilitaron los servicios FTP, Telnet, WWW, API y API-SSL.
+| Router | ether1 | ether2 | ether3 | ether4 | Loopback |
+|---|---|---|---|---|---|
+| ISP-1 | 10.0.0.1/30 → EDGE | — | — | — | 1.1.1.1 |
+| ISP-2 | 10.0.0.5/30 → EDGE | — | — | — | 2.2.2.2 |
+| EDGE | 10.0.0.2/30 → ISP-1 | 10.0.0.6/30 → ISP-2 | 10.0.0.9/30 → CORE-1 | 10.0.0.13/30 → CORE-2 | 3.3.3.3 |
+| CORE-1 | 10.0.0.10/30 → EDGE | 10.0.0.17/30 → CORE-2 | 10.0.0.21/30 → DIST-1 | 10.0.0.29/30 → DIST-2 | 4.4.4.4 |
+| CORE-2 | 10.0.0.14/30 → EDGE | 10.0.0.18/30 → CORE-1 | 10.0.0.25/30 → DIST-1 | 10.0.0.33/30 → DIST-2 | 5.5.5.5 |
+| DIST-1 | 10.0.0.22/30 → CORE-1 | 10.0.0.26/30 → CORE-2 | 192.168.10.2/24 → USERS | 192.168.20.2/24 → SERVERS | 6.6.6.6 |
+| DIST-2 | 10.0.0.30/30 → CORE-1 | 10.0.0.34/30 → CORE-2 | 192.168.10.3/24 → USERS | 192.168.20.3/24 → SERVERS | 7.7.7.7 |
 
-Se verificó mediante pruebas de ping la conectividad entre routers vecinos y entre los hosts y sus routers de distribución, obteniendo respuestas satisfactorias.
+Hardening aplicado en los siete routers, según la política 1.3:
 
-Se creó el snapshot BASE-F1 en GNS3 y se almacenaron siete exports de configuración RouterOS en el directorio `backups/` del repositorio.
+- Contraseña de administrador en el usuario `admin`.
+- Usuario `monitor` con grupo `read`.
+- Servicios deshabilitados: FTP, Telnet, WWW, API y API-SSL. Quedan habilitados SSH y Winbox para administración.
+- Cliente DHCP eliminado de las interfaces.
 
-**Resultado:** configuración inicial y pruebas de conectividad de F1 completadas.
+Las contraseñas no se publican en el repositorio.
+
+## 2.2 Verificación
+
+| # | Prueba | Origen → destino | Resultado esperado | Resultado obtenido | Evidencia |
+|---|---|---|---|---|---|
+| 1 | Topología completa | GNS3 | 11 nodos cableados según IPAM | OK | `capturas/f1/01-topologia.png` |
+| 2 | Enlace EDGE ↔ CORE-1 | EDGE → 10.0.0.10 | 0 % pérdida | OK | `capturas/f1/02-ping-EDGE-CORE1.png` |
+| 3 | Host USERS a su distribución | PC-USER → 192.168.10.2 / .3 | 0 % pérdida | OK | `capturas/f1/03-ping-PC-USER.png` |
+| 4 | Host SERVERS a su distribución | SRV → 192.168.20.2 / .3 | 0 % pérdida | OK | `capturas/f1/04-ping-SRV.png` |
+| 5 | Usuario de monitoreo | `/user print` | `monitor` en grupo `read` | OK | `capturas/f1/05-usuario-monitor.png` |
+
+## 2.3 Backup
+
+Se exportó la configuración de cada router con `/export` y se guardó en el repositorio:
+
+| Router | Archivo |
+|---|---|
+| ISP-1 | `backups/ISP-1-F1.rsc` |
+| ISP-2 | `backups/ISP-2-F1.rsc` |
+| EDGE | `backups/EDGE-F1.rsc` |
+| CORE-1 | `backups/CORE-1-F1.rsc` |
+| CORE-2 | `backups/CORE-2-F1.rsc` |
+| DIST-1 | `backups/DIST-1-F1.rsc` |
+| DIST-2 | `backups/DIST-2-F1.rsc` |
+
+`/export` no incluye usuarios ni contraseñas, por lo que el usuario `monitor` y la contraseña de `admin` se documentan como pasos adicionales del procedimiento de restore.
+
+## 2.4 Prueba de restore (corrección F1)
+
+**Contexto.** Al importar el proyecto GNS3 en la PC de Pilar Giannelli, los siete routers arrancaron con la configuración de fábrica: el prompt mostraba `[admin@MikroTik]`, `/ip address print` no devolvía direcciones y RouterOS pedía aceptar la licencia y cambiar la contraseña. Los intentos de ingreso con la contraseña de F1 fallaron, lo que confirma que la configuración no estaba presente. Esta situación se usó como prueba real de restore desde los backups del repositorio.
+
+**Procedimiento aplicado en cada router:**
+
+1. Ingresar con `admin` (sin contraseña) y aceptar el primer arranque.
+2. Aplicar el contenido de `backups/<ROUTER>-F1.rsc`: identidad, eliminación del cliente DHCP, bridge `loopback`, `disable-running-check=no` en ether1–ether4, direcciones IP y servicios deshabilitados.
+3. Recrear lo que `/export` no incluye: contraseña de `admin` y usuario `monitor` (grupo `read`).
+4. Verificar con `/user print`, `/ip address print`, `/ip service print` y ping a los vecinos directos.
+5. Configurar los hosts VPCS (`ip ... ` y `save`) y verificar ping a ambas distribuciones.
+
+**Resultados:**
+
+| # | Equipo | Verificación | Resultado | Evidencia |
+|---|---|---|---|---|
+| 1 | EDGE (antes) | Router de fábrica, sin IPs | Confirmado vacío | `capturas/f1-correccion/01-restore-antes-EDGE.png` |
+| 2 | EDGE | Usuarios, 5 IPs, servicios, ping a ISP-1 (10.0.0.1) | OK, 0 % pérdida | `capturas/f1-correccion/02-restore-despues-EDGE.png` |
+| 3 | ISP-1 | Usuarios, IPs, servicios, ping a EDGE (10.0.0.2) | OK, 0 % pérdida | `capturas/f1-correccion/03-ISP1-hardening.png` |
+| 4 | ISP-2 | Usuarios, IPs, servicios, ping a EDGE (10.0.0.6) | OK, 0 % pérdida | `capturas/f1-correccion/04-ISP2-hardening.png` |
+| 5 | CORE-1 | Usuarios, IPs, servicios, ping a EDGE (10.0.0.9) | OK, 0 % pérdida | `capturas/f1-correccion/05-restore-CORE1.png` |
+| 6 | CORE-2 | Ping a EDGE (10.0.0.13) y a CORE-1 por el enlace core–core (10.0.0.17) | OK, 0 % pérdida | `capturas/f1-correccion/06-restore-CORE2.png` |
+| 7 | DIST-1 | Ping a CORE-1 (10.0.0.21) y CORE-2 (10.0.0.25) | OK, 0 % pérdida | `capturas/f1-correccion/07-restore-DIST1.png` |
+| 8 | DIST-2 | Ping a CORE-1 (10.0.0.29), CORE-2 (10.0.0.33), DIST-1 por USERS (192.168.10.2) y por SERVERS (192.168.20.2) | OK, 0 % pérdida | `capturas/f1-correccion/08-restore-DIST2.png` |
+| 9 | PC-USER | Ping a 192.168.10.2 y 192.168.10.3 | OK | `capturas/f1-correccion/09-restore-PC-USER.png` |
+| 10 | SRV | Ping a 192.168.20.2 y 192.168.20.3 | OK | `capturas/f1-correccion/10-restore-SRV.png` |
+
+Una vez verificado el restore se guardó el snapshot `BASE-F1-RESTAURADO` en GNS3, punto de partida de F2.
+
+## 2.5 Qué funcionó y qué no
+
+**Funcionó:**
+
+- Los exports de `backups/` permitieron reconstruir los siete routers sin información adicional sobre direcciones ni interfaces.
+- El enlace CORE-1 ↔ CORE-2 (defecto 3 de F0) quedó operativo y verificado.
+
+**No funcionó / lecciones aprendidas:**
+
+- El proyecto GNS3 compartido no incluía la imagen `chr-7.21.5.img` ni los discos de los routers, por lo que en otra PC los nodos arrancaron vacíos. Se descargó la imagen de la misma versión desde MikroTik y se restauró desde los exports.
+- GNS3 en Windows sin HAXM no iniciaba los nodos. Se resolvió deshabilitando la aceleración por hardware de QEMU en las preferencias.
+- `/export` no incluye usuarios ni contraseñas: el procedimiento de restore debe recrearlos manualmente. Se incorpora este paso al procedimiento.
+- Al pegar un bloque dos veces, RouterOS responde `failure: already have ...` y no modifica la configuración. El estado final se valida siempre con los comandos `print`.
+
+**Resultado:** F1 restaurada y verificada en los siete routers y en los dos hosts, con evidencia en `capturas/f1-correccion/`.
