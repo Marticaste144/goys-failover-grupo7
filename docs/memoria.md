@@ -493,3 +493,50 @@ En DIST-2 cambiamos la clave MD5 del template de OSPF por una incorrecta:
 | Que todo vuelva al restaurar la clave | Los dos vecinos volvieron a Full | `capturas/f4/seg-02-ospf-restaurado-DIST2.png` |
 
 **Conclusión.** Con la clave incorrecta la adyacencia **falla**: un router que no conoce la clave no puede formar vecindad ni inyectar rutas. La prueba también muestra el costo operativo: un error de tipeo en la clave deja aislada una LAN entera, así que cualquier cambio de claves tiene que ir con su plan de reversión en el change log.
+
+## 5.6 Drill 4 — check-gateway: failover estático de enlace
+
+En EDGE agregamos dos rutas por defecto estáticas con `check-gateway=ping`: una primaria hacia ISP-1 (distance 1) y una de respaldo hacia ISP-2 (distance 2). Con esas distancias le ganan a las rutas de BGP (distance 20), así que durante el drill el failover dependió solo de las estáticas. Después suspendimos el enlace EDGE↔ISP-1 con un ping continuo desde PC-USER hacia 8.8.8.8.
+
+| Detección | Respuesta | Recuperación | Tiempo medido |
+|---|---|---|---|
+| El netwatch de EDGE marca `ISP-1 DOWN` (13:42:11). La estática a 10.0.0.1 pasa a inactiva | La estática a 10.0.0.5 queda activa y el tráfico sale por ISP-2 | Con Resume, la primaria vuelve a quedar activa (`ISP-1 UP`, 13:49:19). Al final quitamos las estáticas y EDGE volvió a BGP | 0 pings perdidos, tanto en el corte como en la vuelta |
+
+**Post-mortem.** El failover funcionó porque RouterOS activa la ruta de menor distancia que tenga el gateway disponible. Como el enlace se cayó físicamente, la ruta primaria se desactivó al instante, antes de que `check-gateway` llegara a fallar. El aporte real de `check-gateway=ping` es el caso en que el enlace sigue arriba pero el gateway no responde: ahí lo detecta con dos pings fallidos, unos 10 a 20 s. Comparado con BGP es mucho más simple, pero solo verifica el próximo salto y no le avisa al proveedor por dónde volver. En este laboratorio la vuelta igual la resolvió BGP.
+
+Runbook: `runbooks/drill-4-check-gateway.md`. Capturas: `capturas/f4/d4-*.png`.
+
+## 5.7 Verificación de seguridad — BGP con TCP-MD5 incorrecto
+
+En EDGE cambiamos la clave TCP-MD5 de la sesión con ISP-2 por una incorrecta:
+
+```
+/routing bgp connection set [find name=a-ISP2] tcp-md5-key=claveINCORRECTA
+```
+
+| Qué esperábamos | Qué obtuvimos | Evidencia |
+|---|---|---|
+| Que la sesión con ISP-2 no pueda establecerse | La sesión a-ISP2-1 pasó a Idle (16:16:06), quedó sin la marca E y con 0 prefijos, y no volvió a levantar | `capturas/f4/seg-03-bgp-clave-mala-EDGE.png` |
+| Que la sesión con ISP-1 no se vea afectada | a-ISP1-1 siguió establecida y la salida a Internet no se cortó | `capturas/f4/seg-03-bgp-clave-mala-EDGE.png` |
+| Que todo vuelva al restaurar la clave | a-ISP2-1 volvió a Established (16:18:10) | `capturas/f4/seg-04-bgp-restaurado-EDGE.png` |
+
+**Conclusión.** Con la clave incorrecta la sesión **falla**: ISP-2 descarta los segmentos TCP firmados con otra clave, así que no se puede armar la sesión ni inyectar rutas. Como cada proveedor tiene su propia clave, el problema quedó limitado a una sola sesión y la otra siguió funcionando.
+
+## 5.8 Monitoreo en EDGE
+
+En EDGE, además del SNMP que configuramos en los siete routers (ver 5.9), agregamos:
+
+- **Regla de firewall** `F4 SNMP desde gestion`: acepta UDP 161 solo desde la lista GESTION (192.168.10.0/24). Va justo antes de la regla que descarta todo lo demás; si no, el firewall de F3 bloqueaba las consultas SNMP.
+- **Chequeos con netwatch** hacia los próximos saltos de los dos ISP y de los dos CORE, cada 5 s con 1 s de timeout. Cada cambio de estado deja una línea en el log (`NETWATCH <equipo> DOWN` / `UP`).
+
+| Host vigilado | Equipo |
+|---|---|
+| 10.0.0.1 | ISP-1 |
+| 10.0.0.5 | ISP-2 |
+| 10.0.0.10 | CORE-1 |
+| 10.0.0.14 | CORE-2 |
+
+Los netwatch fueron la primera señal de detección en los drills 2, 3 y 4: registraron cada caída y cada vuelta con la hora exacta, y esas líneas son las que usamos para medir los tiempos.
+
+Capturas: `capturas/f4/mon-01-snmp-EDGE.png`, `mon-02-firewall-netwatch-EDGE.png`.
+
