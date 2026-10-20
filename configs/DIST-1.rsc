@@ -1,4 +1,4 @@
-# 2026-10-17 01:39:44 by RouterOS 7.21.5
+# 2026-10-20 16:23:02 by RouterOS 7.21.5
 # system id = 8CvaGzltNFP
 #
 /interface bridge
@@ -15,6 +15,10 @@ add authentication=simple interface=ether4 name=vrrp20 version=2 vrid=20
 add name=ospf-1 router-id=6.6.6.6
 /routing ospf area
 add instance=ospf-1 name=backbone
+/snmp community
+set [ find default=yes ] disabled=yes
+add addresses=192.168.10.0/24 authentication-protocol=SHA1 encryption-protocol=AES name=monitor-g7 security=\
+    private
 /ip address
 add address=10.0.0.22/30 interface=ether1 network=10.0.0.20
 add address=10.0.0.26/30 interface=ether2 network=10.0.0.24
@@ -32,5 +36,7 @@ set api-ssl disabled=yes
 /routing ospf interface-template
 add area=backbone auth=md5 auth-id=1 interfaces=ether1,ether2 type=ptp
 add area=backbone interfaces=loopback,ether3,ether4 passive
+/snmp
+set contact="Grupo 7" enabled=yes location="GNS3 DIST-1"
 /system identity
 set name=DIST-1

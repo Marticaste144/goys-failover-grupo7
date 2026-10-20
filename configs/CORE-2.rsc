@@ -1,4 +1,4 @@
-# 2026-10-17 01:37:50 by RouterOS 7.21.5
+# 2026-10-20 16:22:53 by RouterOS 7.21.5
 # system id = BmmYM4q7BWA
 #
 /interface bridge
@@ -12,6 +12,10 @@ set [ find default-name=ether4 ] disable-running-check=no
 add name=ospf-1 router-id=5.5.5.5
 /routing ospf area
 add instance=ospf-1 name=backbone
+/snmp community
+set [ find default=yes ] disabled=yes
+add addresses=192.168.10.0/24 authentication-protocol=SHA1 encryption-protocol=AES name=monitor-g7 security=\
+    private
 /ip address
 add address=10.0.0.14/30 interface=ether1 network=10.0.0.12
 add address=10.0.0.18/30 interface=ether2 network=10.0.0.16
@@ -27,5 +31,7 @@ set api-ssl disabled=yes
 /routing ospf interface-template
 add area=backbone auth=md5 auth-id=1 interfaces=ether1,ether2,ether3,ether4 type=ptp
 add area=backbone interfaces=loopback passive
+/snmp
+set contact="Grupo 7" enabled=yes location="GNS3 CORE-2"
 /system identity
 set name=CORE-2
