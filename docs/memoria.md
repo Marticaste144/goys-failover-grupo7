@@ -9,9 +9,10 @@ Tomás Terruli	R2 — Proveedores
 Pilar Giannelli	R3 — Core + R4 — Distribución
 
 
-> Debido a que el Grupo 7 está conformado por tres integrantes, se distribuyen
+Debido a que el Grupo 7 está conformado por tres integrantes, se distribuyen
 
-> entre ellos las responsabilidades de los cinco roles definidos en la consigna.
+entre ellos las responsabilidades de los cinco roles definidos en la consigna.
+
 1. Diseño (F0)
 1.1 Corrección del diagrama
 A partir del análisis del diagrama original "Enterprise Network Design (Cisco)",
