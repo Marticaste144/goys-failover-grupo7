@@ -540,3 +540,80 @@ Los netwatch fueron la primera señal de detección en los drills 2, 3 y 4: regi
 
 Capturas: `capturas/f4/mon-01-snmp-EDGE.png`, `mon-02-firewall-netwatch-EDGE.png`.
 
+
+## 5.9 Monitoreo con SNMP
+
+En los siete routers habilitamos SNMP versión 3 con estas decisiones:
+
+| Parámetro | Valor | Por qué |
+|---|---|---|
+| Comunidad `public` | Deshabilitada | Es la que viene por defecto y la que cualquiera prueba primero |
+| Usuario | `monitor-g7` | Uno solo, igual en todos los routers |
+| Seguridad | `private` (autenticación SHA1 y cifrado AES) | SNMPv3 autentica y cifra; v1 y v2c mandan la comunidad en texto plano |
+| Permisos | Solo lectura | El monitoreo no tiene por qué cambiar la configuración (mínimo privilegio, política 1.3) |
+| Desde dónde | 192.168.10.0/24 (red de gestión) | La misma red desde la que se administra EDGE |
+| Contacto y ubicación | `Grupo 7` / `GNS3 <router>` | Para identificar cada equipo desde el gestor |
+
+Las claves de autenticación y cifrado no están en el repo: el `/export` las oculta.
+
+Qué se puede monitorear con esto: el estado de las interfaces (enlaces arriba o abajo), los contadores de tráfico y errores, y el estado general de cada router. Los vecinos OSPF, las sesiones BGP y el estado de VRRP los seguimos con los logs y con los netwatch de EDGE (5.8), que son los que usamos como detección en los drills.
+
+La configuración la verificamos en cada router con `/snmp print` y `/snmp community print`. No llegamos a hacer una consulta desde un gestor SNMP, porque los hosts del laboratorio son VPCS y no tienen cliente SNMP; queda como pendiente sumar un gestor (por ejemplo, un contenedor con `snmpwalk` o Zabbix) en la red de gestión.
+
+Capturas: `capturas/f4/mon-03a` a `mon-03d` (CORE y DIST), `mon-04a-snmp-ISP1.png`, `mon-04b-snmp-ISP2.png`.
+
+## 5.10 Drill 3 — BGP: se cae el proveedor
+
+Para probar de verdad la ruta por defecto agregamos 8.8.8.8/32 en la loopback de los dos ISP como "destino de Internet". Esa dirección no se anuncia por BGP, así que los hosts solo llegan a ella por la default: con ISP-1 arriba responde ISP-1, y si se cae, responde ISP-2. Después suspendimos el enlace EDGE↔ISP-1 con un ping continuo desde PC-USER hacia 8.8.8.8.
+
+| Detección | Respuesta | Recuperación | Tiempo medido |
+|---|---|---|---|
+| El netwatch de EDGE marca `ISP-1 DOWN` (13:27:01). La default por 10.0.0.1 queda inactiva. BGP recién baja la sesión al vencer el hold timer (13:29:33) | La default por ISP-2 queda activa. ISP-2 tiene las dos LAN por 10.0.0.6, así que devuelve el tráfico | Con Resume, la sesión con ISP-1 se restablece (13:35:19) y su default vuelve a ser la activa | 1 ping perdido (≈ 1 s) en el corte; 0 en la vuelta |
+
+**Post-mortem.** El corte fue de un segundo porque la conmutación no la hizo BGP: al caer el enlace, la default aprendida de ISP-1 se quedó sin próximo salto alcanzable y RouterOS la desactivó en el momento. BGP siguió considerando viva la sesión 2 min 32 s más, hasta que venció el hold timer (3 min desde el último keepalive). Si la falla hubiera sido dentro del proveedor, con el enlace arriba, el corte habría durado hasta el hold timer. Para eso, la mejora es bajar el hold time y el keepalive, o usar BFD. La vuelta a ISP-1 fue automática y sin pérdidas.
+
+Runbook: `runbooks/drill-3-bgp.md`. Capturas: `capturas/f4/d3-*.png`.
+
+## 5.11 Resumen de los drills
+
+| Drill | Falla provocada | Mecanismo que respondió | Tiempo de corte medido | ¿Cumplió? |
+|---|---|---|---|---|
+| 1 — VRRP | Cae DIST-1 (gateway de USERS) | VRRP: DIST-2 toma vrid 10 | ≈ 14 s (14 pings) | Sí |
+| 2 — OSPF | Se corta EDGE↔CORE-1 | OSPF: DIST-1 sale por CORE-2 | 0 s | Sí |
+| 3 — BGP | Se corta EDGE↔ISP-1 | Default de ISP-2 | ≈ 1 s (1 ping) | Sí |
+| 4 — check-gateway | Se corta EDGE↔ISP-1 | Estática de respaldo (distance 2) | 0 s | Sí |
+| 5 — Load-sharing | — (operación normal) | VRRP con masters cruzados | No aplica | Sí |
+
+| Prueba de seguridad | Resultado |
+|---|---|
+| OSPF con clave incorrecta en DIST-2 | La adyacencia falla; SERVERS se queda sin salida hasta restaurar la clave |
+| BGP con TCP-MD5 incorrecto en EDGE↔ISP-2 | La sesión no levanta; la sesión con ISP-1 sigue funcionando |
+
+## 5.12 Configuración y backup
+
+Las configuraciones finales están en `configs/` y los exports de los siete routers al terminar F4 en `backups/post-F4/`. Al cerrar la fase sacamos el snapshot `BASE-F4-FINAL` en GNS3. Respecto de F3, los cambios que quedan en la configuración son: SNMP en los siete routers, la regla de firewall para SNMP y los netwatch en EDGE, y la dirección 8.8.8.8 en la loopback de los ISP. Las rutas estáticas del drill 4 las quitamos al terminar.
+
+## 5.13 Qué funcionó y qué no
+
+**Lo que funcionó:**
+
+- Los cinco drills cumplieron: en ninguna falla la red quedó sin salida, y la vuelta al estado normal fue automática en todos los casos.
+- La detección por caída de enlace hizo que OSPF y la ruta por defecto conmutaran en segundos, sin esperar los timers de los protocolos.
+- Las dos pruebas de seguridad dieron el resultado esperado: con una clave incorrecta, ni OSPF ni BGP aceptan al vecino.
+- Los netwatch dieron la hora exacta de cada caída y cada vuelta, y fueron la base para medir los tiempos.
+
+**Lo que no funcionó y cómo lo resolvimos:**
+
+- Al preparar F4 encontramos que los exports de ISP-1 e ISP-2 de F3 no incluían la configuración BGP: se habían exportado antes de configurarla. Los volvimos a exportar y corregimos `configs/` y `backups/post-F3/`.
+- Al configurar SNMP, la línea con las claves quedó a la vista en tres capturas. Las rehicimos limpiando la pantalla antes de verificar (Ctrl+L) y no usamos las originales.
+- GNS3 no pudo abrir la consola de DIST-1 porque el puerto seguía tomado. Lo resolvimos cambiando el tipo de consola con el nodo detenido. En el medio, cerrar la ventana de consola alternativa apagó el nodo; la red hizo failover y no se perdió configuración.
+- La PC donde corre el laboratorio se reinició dos veces en medio de la prueba de seguridad de OSPF. Como la configuración se guarda en el disco de cada router, al volver a arrancar el estado era el mismo y seguimos desde el paso en que estábamos.
+- En el drill 1 el corte medido (14 s) fue mayor que el tiempo teórico de VRRP y no pudimos explicar la diferencia con los datos que teníamos. Queda como mejora registrar la hora exacta en que se provoca la falla.
+
+**Mejoras que surgen de los drills:**
+
+- Bajar los timers de OSPF y BGP, o usar BFD, para detectar en segundos las fallas que no tiran el enlace.
+- Definir la preferencia por ISP-1 con local-preference en lugar de depender del desempate de BGP.
+- Sumar un gestor SNMP real en la red de gestión.
+
+**Resultado:** la red sobrevive a la caída de un gateway, de un camino interno y de un proveedor; el monitoreo detecta cada falla, y la autenticación del plano de control rechaza a vecinos con clave incorrecta.
