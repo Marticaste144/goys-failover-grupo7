@@ -422,3 +422,74 @@ Las configuraciones están en `configs/ISP-1.rsc`, `configs/ISP-2.rsc` y `config
 - Las reglas de BGP del firewall (la 3 y la 4) quedaron con 0 paquetes. Tiene sentido: las sesiones ya estaban levantadas antes de poner el firewall, así que su tráfico entra por la regla de respuestas. Esas reglas se van a usar cuando un ISP tenga que volver a abrir la sesión, y lo vamos a probar en los drills de F4.
 
 **Resultado:** salida a Internet por los dos proveedores con BGP autenticado, y el borde protegido por el firewall.
+
+
+
+# 5. F4 — Drills, monitoreo y verificación de seguridad
+
+## 5.1 Cómo organizamos la fase
+
+Ejecutamos los cinco drills sobre el proyecto GNS3 de la PC de Pilar, el mismo que usamos desde la corrección de F1. Siguiendo la consigna, en esta fase rotamos los roles R1 y R2: Tomás operó EDGE y Martina operó los ISP. Cada drill tiene su runbook en `runbooks/` con la secuencia detección → respuesta → recuperación, el tiempo medido y el post-mortem.
+
+Antes de empezar sacamos el snapshot `BASE-F4` en GNS3. Como CORE, DIST y EDGE no habían cambiado desde F3, usamos los exports de `backups/post-F3/` como backup previo a los drills.
+
+**Cómo medimos.** Dejamos un ping continuo desde el host (`ping -t` en el VPCS) mientras provocábamos la falla y contamos los paquetes perdidos: cada `timeout` equivale a un segundo aproximado de corte. Para saber cuándo detectó la falla cada router usamos los logs. Los routers tienen el reloj en UTC, tres horas más que la hora de Argentina; los tiempos que informamos son diferencias entre líneas del mismo log, así que no los afecta.
+
+**Cómo provocamos las fallas.** Para la caída de un router usamos Stop sobre el nodo. Para la caída de un enlace, Suspend sobre el cable en GNS3.
+
+## 5.2 Drill 1 — VRRP: se cae el gateway
+
+Apagamos DIST-1, master del grupo de USERS, con un ping continuo desde PC-USER hacia Internet.
+
+| Detección | Respuesta | Recuperación | Tiempo medido |
+|---|---|---|---|
+| DIST-2 deja de recibir los anuncios de DIST-1 y se declara master de vrid 10 (`master down timer`, 02:44:19) | DIST-2 atiende las dos LAN. PC-USER sigue usando la misma MAC virtual (00:00:5e:00:01:0a) | Al volver DIST-1, primero forma OSPF (02:52:52) y después recupera el gateway por prioridad (02:52:58) | 14 pings perdidos, ≈ 14 s |
+
+**Post-mortem.** El failover funcionó porque los dos DIST comparten la IP y la MAC virtual, así que el cambio de router es transparente para el host. VRRP en sí detecta en unos 3,6 s, pero el corte que vio el host fue de 14 s; no coincide con el dead interval de OSPF (CORE-1 dio de baja a DIST-1 recién a las 02:44:54, cuando el ping ya había vuelto), así que no pudimos atribuir la diferencia a un solo factor. Queda como mejora registrar la hora exacta del corte para medir contra el log. El failback salió en el orden correcto: DIST-1 tuvo rutas antes de volver a atender a los hosts.
+
+Durante el drill tuvimos dos incidentes con GNS3: el puerto de consola de DIST-1 (5012) quedó tomado por el servidor de GNS3 y, al cambiar el tipo de consola, el nodo se reinició dos veces más. En cada reinicio la red repitió el mismo failover y failback sin pérdida de configuración.
+
+Runbook: `runbooks/drill-1-vrrp.md`. Capturas: `capturas/f4/d1-*.png`.
+
+## 5.3 Drill 2 — OSPF: se corta el camino interno
+
+Suspendimos el enlace EDGE↔CORE-1 con un ping continuo desde PC-USER.
+
+| Detección | Respuesta | Recuperación | Tiempo medido |
+|---|---|---|---|
+| CORE-1 registra `ether1 link down` (03:40:44) y baja el vecino EDGE 2 s después. El netwatch de EDGE marca `CORE-1 DOWN` (03:40:49) | DIST-1 pasa a salir por CORE-2 (10.0.0.25) | Con Resume, la adyacencia EDGE↔CORE-1 vuelve a Full | 0 pings perdidos (un pico de 143 ms) |
+
+**Post-mortem.** No se perdió ningún paquete por dos razones: el CHR detecta la caída del enlace al instante (las interfaces tienen `disable-running-check=no`), así que OSPF no esperó los 40 s del dead interval; y DIST-1 ya tenía un segundo camino de igual costo por CORE-2, gracias a que cada distribución está conectada a los dos núcleos. Después del Resume el tráfico siguió por CORE-2: con dos caminos de igual costo no hay uno principal al que volver. Si la falla hubiera sido un router colgado sin caída de enlace, la detección habría dependido del dead interval; bajar los timers o usar BFD lo acortaría.
+
+Runbook: `runbooks/drill-2-ospf.md`. Capturas: `capturas/f4/d2-*.png`.
+
+## 5.4 Drill 5 — Load-sharing VRRP: ambos DIST activos
+
+Verificamos el estado normal de operación desde los dos hosts.
+
+| Host | Gateway que usa | Camino |
+|---|---|---|
+| PC-USER | 192.168.10.2 — DIST-1 (master de vrid 10) | DIST-1 → CORE-1 → EDGE |
+| SRV | 192.168.20.3 — DIST-2 (master de vrid 20) | DIST-2 → CORE-2 → EDGE |
+
+DIST-1 quedó con vrrp10 en master (prioridad 150) y vrrp20 en backup, y DIST-2 al revés.
+
+**Post-mortem.** Con las prioridades cruzadas, los dos DIST llevan tráfico al mismo tiempo y cada uno es el respaldo del otro, así que no hay un router ocioso. El reparto es por LAN completa: si una LAN tuviera mucho más tráfico que la otra, quedaría desbalanceado.
+
+Runbook: `runbooks/drill-5-load-sharing.md`. Capturas: `capturas/f4/d5-*.png`.
+
+## 5.5 Verificación de seguridad — OSPF con clave incorrecta
+
+En DIST-2 cambiamos la clave MD5 del template de OSPF por una incorrecta:
+
+```
+/routing ospf interface-template set [find auth=md5] auth-key=claveINCORRECTA
+```
+
+| Qué esperábamos | Qué obtuvimos | Evidencia |
+|---|---|---|
+| Que los CORE descarten los hellos de DIST-2 y la adyacencia se caiga | Al vencer el dead interval, los vecinos 5.5.5.5 (15:46:21) y 4.4.4.4 (15:46:23) pasaron de Full a Down y `neighbor print` quedó vacío | `capturas/f4/seg-01-ospf-clave-mala-DIST2.png` |
+| Que SERVERS pierda la salida, porque su gateway queda sin rutas | Desde SRV, `ping 8.8.8.8` recibe `Destination network unreachable` de 192.168.20.3 (DIST-2) | `capturas/f4/seg-01b-impacto-SRV.png` |
+| Que todo vuelva al restaurar la clave | Los dos vecinos volvieron a Full | `capturas/f4/seg-02-ospf-restaurado-DIST2.png` |
+
+**Conclusión.** Con la clave incorrecta la adyacencia **falla**: un router que no conoce la clave no puede formar vecindad ni inyectar rutas. La prueba también muestra el costo operativo: un error de tipeo en la clave deja aislada una LAN entera, así que cualquier cambio de claves tiene que ir con su plan de reversión en el change log.
